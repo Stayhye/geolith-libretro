@@ -1012,9 +1012,13 @@ void retro_init(void) {
     // Set up logging
     geo_log_set_callback(geo_retro_log);
 
-    // Allocate and pass the video buffer into the emulator
-    vbuf = (uint32_t*)calloc(1, LSPC_WIDTH * LSPC_SCANLINES * sizeof(uint32_t));
+    // Allocate and pass the video buffer into the emulator (using 16-bit sizing for ABGR1555)
+    vbuf = (uint32_t*)calloc(1, LSPC_WIDTH * LSPC_SCANLINES * sizeof(uint16_t));
     geo_lspc_set_buffer(vbuf);
+
+    // Request the frontend pixel format to be set to ABGR1555
+    enum retro_pixel_format fmt = RETRO_PIXEL_FORMAT_ABGR1555;
+    environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
 
     // Allocate and pass the audio buffer into the emulator
     abuf = (int16_t*)calloc(1, 2048 * sizeof(int16_t));
@@ -1026,7 +1030,6 @@ void retro_init(void) {
 
     geo_mixer_set_raw(1); // Bypass the emulator's internal resampler
 }
-
 void retro_deinit(void) {
     geo_mixer_deinit();
     geo_deinit();
@@ -1180,14 +1183,6 @@ void retro_run(void) {
     if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &update) && update) {
         check_variables(false);
         geo_geom_refresh();
-    }
-	
-	// Swap Red and Blue channels for ABGR1555 formatting
-    uint16_t *pixels = (uint16_t *)vbuf;
-    int total_pixels = LSPC_WIDTH * LSPC_SCANLINES;
-    for (int i = 0; i < total_pixels; i++) {
-        uint16_t p = pixels[i];
-        pixels[i] = (p & 0x8000) | ((p & 0x001F) << 10) | (p & 0x03E0) | ((p & 0x7C00) >> 10);
     }
 
     video_cb(vbuf + (LSPC_WIDTH * (video_crop_t + 16)) + video_crop_l,
