@@ -1153,9 +1153,9 @@ void retro_run(void) {
     // If loading detected, clear vbuf (so the borked pre-load frame doesn't
     // persist on screen during the skip), then fast-forward without rendering.
     if (cd_mode && cd_skip_loading && geo_cd_sector_decoded_this_frame()) {
-        memset(vbuf, 0, LSPC_WIDTH * LSPC_SCANLINES * sizeof(uint32_t));
+        memset(vbuf, 0, LSPC_WIDTH * LSPC_SCANLINES * sizeof(uint16_t));
         video_cb(vbuf + (LSPC_WIDTH * (video_crop_t + 16)) + video_crop_l,
-            video_width_visible, video_height_visible, LSPC_WIDTH << 2);
+            video_width_visible, video_height_visible, LSPC_WIDTH << 1);
         geo_lspc_set_skip_render(1);
         int skip = 0, idle = 0;
         while (idle < 20) {
@@ -1185,7 +1185,7 @@ void retro_run(void) {
     video_cb(vbuf + (LSPC_WIDTH * (video_crop_t + 16)) + video_crop_l,
         video_width_visible,
         video_height_visible,
-        LSPC_WIDTH << 2);
+        LSPC_WIDTH << 1);
 
     audio_batch_cb(abuf, numsamps);
 }
