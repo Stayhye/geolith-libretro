@@ -975,8 +975,11 @@ static void check_variables(bool first_run) {
 }
 
 void retro_init(void) {
-    // Set up log callback
     struct retro_log_callback log;
+    struct retro_vfs_interface_info vfs_iface_info;
+    enum retro_pixel_format fmt;
+
+    // Set up log callback
     if (environ_cb(RETRO_ENVIRONMENT_GET_LOG_INTERFACE, &log))
         log_cb = log.log;
 
@@ -985,7 +988,6 @@ void retro_init(void) {
         bitmasks = 1;
 
     // Initialize VFS if the frontend supports it
-    struct retro_vfs_interface_info vfs_iface_info;
     vfs_iface_info.required_interface_version = 1;
     vfs_iface_info.iface = NULL;
     if (environ_cb(RETRO_ENVIRONMENT_GET_VFS_INTERFACE, &vfs_iface_info))
@@ -1012,13 +1014,13 @@ void retro_init(void) {
     // Set up logging
     geo_log_set_callback(geo_retro_log);
 
-    // Allocate and pass the video buffer into the emulator (using 16-bit sizing for ABGR1555)
-    vbuf = (uint32_t*)calloc(1, LSPC_WIDTH * LSPC_SCANLINES * sizeof(uint16_t));
-    geo_lspc_set_buffer(vbuf);
-
-    // Request the frontend pixel format to be set to ABGR1555
-    enum retro_pixel_format fmt = RETRO_PIXEL_FORMAT_ABGR1555;
+    // Request ABGR1555 pixel format from the frontend (declared at top for C89 compliance)
+    fmt = RETRO_PIXEL_FORMAT_ABGR1555;
     environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
+
+    // Allocate and pass the video buffer into the emulator
+    vbuf = (uint32_t*)calloc(1, LSPC_WIDTH * LSPC_SCANLINES * sizeof(uint32_t));
+    geo_lspc_set_buffer(vbuf);
 
     // Allocate and pass the audio buffer into the emulator
     abuf = (int16_t*)calloc(1, 2048 * sizeof(int16_t));
@@ -1030,6 +1032,7 @@ void retro_init(void) {
 
     geo_mixer_set_raw(1); // Bypass the emulator's internal resampler
 }
+
 void retro_deinit(void) {
     geo_mixer_deinit();
     geo_deinit();
