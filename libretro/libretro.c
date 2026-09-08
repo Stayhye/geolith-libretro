@@ -975,14 +975,8 @@ static void check_variables(bool first_run) {
 }
 
 void retro_init(void) {
-    struct retro_log_callback log;
-    struct retro_vfs_interface_info vfs_iface_info;
-    enum retro_pixel_format fmt;
-    uint16_t *pixels;
-    int total_pixels, i;
-    uint16_t p;
-
     // Set up log callback
+    struct retro_log_callback log;
     if (environ_cb(RETRO_ENVIRONMENT_GET_LOG_INTERFACE, &log))
         log_cb = log.log;
 
@@ -991,6 +985,7 @@ void retro_init(void) {
         bitmasks = 1;
 
     // Initialize VFS if the frontend supports it
+    struct retro_vfs_interface_info vfs_iface_info;
     vfs_iface_info.required_interface_version = 1;
     vfs_iface_info.iface = NULL;
     if (environ_cb(RETRO_ENVIRONMENT_GET_VFS_INTERFACE, &vfs_iface_info))
@@ -1017,21 +1012,9 @@ void retro_init(void) {
     // Set up logging
     geo_log_set_callback(geo_retro_log);
 
-    // Request 0RGB1555 pixel format from the frontend
-    fmt = RETRO_PIXEL_FORMAT_0RGB1555;
-    environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
-
     // Allocate and pass the video buffer into the emulator
     vbuf = (uint32_t*)calloc(1, LSPC_WIDTH * LSPC_SCANLINES * sizeof(uint32_t));
     geo_lspc_set_buffer(vbuf);
-
-    // Correctly swap Red and Blue channels across the entire 16-bit pixel buffer
-    pixels = (uint16_t *)vbuf;
-    total_pixels = LSPC_WIDTH * LSPC_SCANLINES * 2;
-    for (i = 0; i < total_pixels; i++) {
-        p = pixels[i];
-        pixels[i] = (p & 0x8000) | ((p & 0x001F) << 10) | (p & 0x03E0) | ((p & 0x7C00) >> 10);
-    }
 
     // Allocate and pass the audio buffer into the emulator
     abuf = (int16_t*)calloc(1, 2048 * sizeof(int16_t));
@@ -1199,6 +1182,14 @@ void retro_run(void) {
         geo_geom_refresh();
     }
 
+    // Correctly swap Red and Blue channels across the entire packed 16-bit pixel buffer
+    uint16_t *pixels = (uint16_t *)vbuf;
+    int total_pixels = LSPC_WIDTH * LSPC_SCANLINES * 2;
+    for (int i = 0; i < total_pixels; i++) {
+        uint16_t p = pixels[i];
+        pixels[i] = (p & 0x8000) | ((p & 0x001F) << 10) | (p & 0x03E0) | ((p & 0x7C00) >> 10);
+    }
+
     video_cb(vbuf + (LSPC_WIDTH * (video_crop_t + 16)) + video_crop_l,
         video_width_visible,
         video_height_visible,
@@ -1206,7 +1197,6 @@ void retro_run(void) {
 
     audio_batch_cb(abuf, numsamps);
 }
-
 bool retro_load_game(const struct retro_game_info *info) {
     enum retro_pixel_format fmt = RETRO_PIXEL_FORMAT_XRGB8888;
     if (!environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt)) {
