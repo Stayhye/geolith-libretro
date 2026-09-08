@@ -1175,6 +1175,14 @@ void retro_run(void) {
 
     // Display frame
     geo_exec();
+	
+	// Swap Red and Blue channels for ABGR1555 formatting
+    uint16_t *pixels = (uint16_t *)vbuf;
+    int total_pixels = LSPC_WIDTH * LSPC_SCANLINES;
+    for (int i = 0; i < total_pixels; i++) {
+        uint16_t p = pixels[i];
+        pixels[i] = (p & 0x8000) | ((p & 0x001F) << 10) | (p & 0x03E0) | ((p & 0x7C00) >> 10);
+    }
 
     bool update = false;
     if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &update) && update) {
