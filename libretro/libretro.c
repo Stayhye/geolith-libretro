@@ -1182,16 +1182,12 @@ void retro_run(void) {
         geo_geom_refresh();
     }
 
-    // Convert pixels from RGB565 to 1555 format
+    // Convert ARGB1555 / XRGB1555 emulator output to ABGR1555 (Swap Red and Blue)
     uint16_t *pixels = (uint16_t *)vbuf;
     int total_pixels = LSPC_WIDTH * LSPC_SCANLINES * 2;
     for (int i = 0; i < total_pixels; i++) {
         uint16_t p = pixels[i];
-        uint16_t r = (p >> 11) & 0x1F;
-        uint16_t g = (p >> 5) & 0x3F;
-        uint16_t b = p & 0x1F;
-        g = g >> 1; // Downscale 6-bit green to 5-bit
-        pixels[i] = (r << 10) | (g << 5) | b;
+        pixels[i] = (p & 0x8000) | ((p & 0x001F) << 10) | (p & 0x03E0) | ((p & 0x7C00) >> 10);
     }
 
     video_cb(vbuf + (LSPC_WIDTH * (video_crop_t + 16)) + video_crop_l,
