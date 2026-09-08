@@ -1014,8 +1014,8 @@ void retro_init(void) {
     // Set up logging
     geo_log_set_callback(geo_retro_log);
 
-    // Request ABGR1555 pixel format from the frontend (declared at top for C89 compliance)
-    fmt = RETRO_PIXEL_FORMAT_ABGR1555;
+    // Request 0RGB1555 pixel format from the frontend (correct libretro enum)
+    fmt = RETRO_PIXEL_FORMAT_0RGB1555;
     environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
 
     // Allocate and pass the video buffer into the emulator
