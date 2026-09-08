@@ -975,8 +975,14 @@ static void check_variables(bool first_run) {
 }
 
 void retro_init(void) {
-    // Set up log callback
     struct retro_log_callback log;
+    struct retro_vfs_interface_info vfs_iface_info;
+    enum retro_pixel_format fmt;
+    uint16_t *pixels;
+    int total_pixels, i;
+    uint16_t p;
+
+    // Set up log callback
     if (environ_cb(RETRO_ENVIRONMENT_GET_LOG_INTERFACE, &log))
         log_cb = log.log;
 
@@ -985,7 +991,6 @@ void retro_init(void) {
         bitmasks = 1;
 
     // Initialize VFS if the frontend supports it
-    struct retro_vfs_interface_info vfs_iface_info;
     vfs_iface_info.required_interface_version = 1;
     vfs_iface_info.iface = NULL;
     if (environ_cb(RETRO_ENVIRONMENT_GET_VFS_INTERFACE, &vfs_iface_info))
@@ -1012,11 +1017,15 @@ void retro_init(void) {
     // Set up logging
     geo_log_set_callback(geo_retro_log);
 
+    // Request 0RGB1555 pixel format from the frontend
+    fmt = RETRO_PIXEL_FORMAT_0RGB1555;
+    environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
+
     // Allocate and pass the video buffer into the emulator
     vbuf = (uint32_t*)calloc(1, LSPC_WIDTH * LSPC_SCANLINES * sizeof(uint32_t));
     geo_lspc_set_buffer(vbuf);
-	
-	// Correctly swap Red and Blue channels across the entire 16-bit pixel buffer
+
+    // Correctly swap Red and Blue channels across the entire 16-bit pixel buffer
     pixels = (uint16_t *)vbuf;
     total_pixels = LSPC_WIDTH * LSPC_SCANLINES * 2;
     for (i = 0; i < total_pixels; i++) {
