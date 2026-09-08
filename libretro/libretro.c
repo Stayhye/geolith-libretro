@@ -1140,6 +1140,14 @@ void retro_set_input_state(retro_input_state_t cb) {
     input_state_cb = cb;
 }
 
+// Swap Red and Blue channels for ABGR1555 formatting
+    uint16_t *pixels = (uint16_t *)vbuf;
+    int total_pixels = LSPC_WIDTH * LSPC_SCANLINES;
+    for (int i = 0; i < total_pixels; i++) {
+        uint16_t p = pixels[i];
+        pixels[i] = (p & 0x8000) | ((p & 0x001F) << 10) | (p & 0x03E0) | ((p & 0x7C00) >> 10);
+    }
+
 void retro_set_video_refresh(retro_video_refresh_t cb) {
     video_cb = cb;
 }
@@ -1175,6 +1183,12 @@ void retro_run(void) {
 
     // Display frame
     geo_exec();
+
+    bool update = false;
+    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &update) && update) {
+        check_variables(false);
+        geo_geom_refresh();
+    }
 	
 	// Swap Red and Blue channels for ABGR1555 formatting
     uint16_t *pixels = (uint16_t *)vbuf;
@@ -1182,12 +1196,6 @@ void retro_run(void) {
     for (int i = 0; i < total_pixels; i++) {
         uint16_t p = pixels[i];
         pixels[i] = (p & 0x8000) | ((p & 0x001F) << 10) | (p & 0x03E0) | ((p & 0x7C00) >> 10);
-    }
-
-    bool update = false;
-    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &update) && update) {
-        check_variables(false);
-        geo_geom_refresh();
     }
 
     video_cb(vbuf + (LSPC_WIDTH * (video_crop_t + 16)) + video_crop_l,
