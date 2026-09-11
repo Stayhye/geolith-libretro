@@ -51,7 +51,7 @@ static unsigned sprlimit = 96; // Sprites-per-line limit
 static unsigned skip_render; // Skip rendering during CD loading fast-forward
 
 // Line buffering
-static unsigned linebuf[2][LSPC_WIDTH]; // Line buffers for sprite pixels
+static unsigned linebuf[2][LSPC_WIDTH] __attribute__((aligned(16))); // Line buffers for sprite pixels aligned for MMI/EE
 static unsigned lbactive = 0; // Active line buffer
 
 static uint8_t *fixdata = NULL;
@@ -60,8 +60,8 @@ static unsigned fixbanksw = 0;
 static uint32_t crommask = 0;
 
 // Dynamic output palette with values converted from palette RAM
-static uint32_t palette_normal[SIZE_8K];
-static uint32_t palette_shadow[SIZE_8K];
+static uint32_t palette_normal[SIZE_8K] __attribute__((aligned(16)));
+static uint32_t palette_shadow[SIZE_8K] __attribute__((aligned(16)));
 static uint32_t *palette = palette_normal;
 
 // Palette lookup tables
@@ -363,7 +363,7 @@ void geo_lspc_postload(void) {
    | 0x0000 - 0x6fff |   28K |       | SBC1                         |
    |-------------------------|       |------------------------------|
    | 0x7000 - 0x74ff |       | Lower | Fix map                      |
-   |-----------------|    4K |       |------------------------------|
+   |-----------------|   4K  |       |------------------------------|
    | 0x7500 - 0x7fff |       |       | Extension                    |
    ------------------------------------------------------------------
    | 0x8000 - 0x81ff |   512 |       | SBC2                         |
@@ -392,12 +392,13 @@ static inline void geo_lspc_bdsprline(void) {
     unsigned *lb = linebuf[lbactive];
 
     for (unsigned p = 0; p < LSPC_WIDTH; ++p) {
-        ptr[p] = lb[p] ? palette[lb[p]] : bdcol;
+        unsigned pix = lb[p];
+        ptr[p] = pix ? palette[pix] : bdcol;
         lb[p] = 0;
     }
 }
 
-// Read half of a a palette RAM entry from the active bank
+// Read half of a palette RAM entry from the active bank
 uint8_t geo_lspc_palram_rd08(uint32_t addr) {
     uint16_t pval =
         lspc.palram[((addr >> 1) & 0x0fff) + (lspc.palbank * SIZE_4K)];
@@ -412,25 +413,24 @@ uint16_t geo_lspc_palram_rd16(uint32_t addr) {
 // Write half of a value to the active bank of palette RAM
 void geo_lspc_palram_wr08(uint32_t addr, uint8_t data) {
     addr >>= 1; // The address should access 16-bit values rather than bytes
+    unsigned idx = (addr & 0x0fff) + (lspc.palbank * SIZE_4K);
+    uint16_t *pval = &lspc.palram[idx];
 
     if (addr & 0x01) {
-        lspc.palram[(addr & 0x0fff) + (lspc.palbank * SIZE_4K)] &= 0xff00;
-        lspc.palram[(addr & 0x0fff) + (lspc.palbank * SIZE_4K)] |= data;
+        *pval = (*pval & 0xff00) | data;
     }
     else {
-        lspc.palram[(addr & 0x0fff) + (lspc.palbank * SIZE_4K)] &= 0x00ff;
-        lspc.palram[(addr & 0x0fff) + (lspc.palbank * SIZE_4K)] |= (data << 8);
+        *pval = (*pval & 0x00ff) | ((uint16_t)data << 8);
     }
 
-    unsigned idx = (addr & 0x0fff) + (lspc.palbank * SIZE_4K);
-    geo_lspc_palconv(idx, lspc.palram[idx]);
+    geo_lspc_palconv(idx, *pval);
 }
 
 // Write a value to the active bank of palette RAM
 void geo_lspc_palram_wr16(uint32_t addr, uint16_t data) {
-    addr >>= 1; // The address should access 16-bit values rather than bytes
-    lspc.palram[(addr & 0x0fff) + (lspc.palbank * SIZE_4K)] = data;
-    geo_lspc_palconv((addr & 0x0fff) + (lspc.palbank * SIZE_4K), data);
+    addr = ((addr >> 1) & 0x0fff) + (lspc.palbank * SIZE_4K);
+    lspc.palram[addr] = data;
+    geo_lspc_palconv(addr, data);
 }
 
 // Set the active palette bank
@@ -548,13 +548,15 @@ static void geo_lspc_fixline_default(void) {
 
        Fix Map
        =======================================================================
-       | 0x7000 | 0x7020 | 0x7040 |   ........    | 0x74a0 | 0x74c0 | 0x74e0 |
-       | 0x7001 | 0x7021 | 0x7041 |   ........    | 0x74a1 | 0x74c1 | 0x74e1 |
-       |                              ........                               |
-       | 0x701f | 0x703f | 0x705f |   ........    | 0x74bf | 0x74df | 0x74ff |
+       | 0x7000 | 0x7020 | 0x7040 |    ........    | 0x74a0 | 0x74c0 | 0x74e0 |
+       | 0x7001 | 0x7021 | 0x7041 |    ........    | 0x74a1 | 0x74c1 | 0x74e1 |
+       |                           ........                                  |
+       | 0x701f | 0x703f | 0x705f |    ........    | 0x74bf | 0x74df | 0x74ff |
        -----------------------------------------------------------------------
     */
     unsigned line = lspc.scanline - LSPC_LINE_BORDER_TOP;
+    unsigned row = line & 0x07;
+    uint32_t *voffset = vbuf + (LSPC_WIDTH * lspc.scanline);
 
     for (unsigned x = 0; x < LSPC_FIXTILES_H; ++x) {
         // Addresses increment vertically downwards
@@ -579,25 +581,23 @@ static void geo_lspc_fixline_default(void) {
 
            Each tile is 4 bytes wide and 8 bytes tall, for a total of 32 bytes.
         */
-        unsigned tnum = entry & 0x0fff;
-        uint8_t *tdata = &fixdata[tnum << 5];
+        uint8_t *tdata = &fixdata[(entry & 0x0fff) << 5] + row;
+        uint32_t *vdest = voffset + (x << 3);
 
-        // Offset into video buffer to draw the tile row into
-        uint32_t *voffset =
-            vbuf + (LSPC_WIDTH * lspc.scanline) + (x << 3);
+        uint8_t b0 = tdata[0x10];
+        uint8_t b1 = tdata[0x18];
+        uint8_t b2 = tdata[0x00];
+        uint8_t b3 = tdata[0x08];
 
-        // Row in the 8 pixel high tile
-        unsigned row = line & 0x07;
-
-        // If the palette entry is non-zero, output a colour
-        uint32_t pentry = 0;
-        for (unsigned p = 0, f = 0x10; p < 4; ++p, f = (f + 0x08) & 0x18) {
-            pentry = tdata[f + row] & 0x0f;
-            if (pentry) voffset[p << 1] = palette[poffset + pentry];
-
-            pentry = (tdata[f + row] >> 4) & 0x0f;
-            if (pentry) voffset[(p << 1) + 1] = palette[poffset + pentry];
-        }
+        unsigned p;
+        p = b0 & 0x0f; if (p) vdest[0] = palette[poffset + p];
+        p = b0 >> 4;   if (p) vdest[1] = palette[poffset + p];
+        p = b1 & 0x0f; if (p) vdest[2] = palette[poffset + p];
+        p = b1 >> 4;   if (p) vdest[3] = palette[poffset + p];
+        p = b2 & 0x0f; if (p) vdest[4] = palette[poffset + p];
+        p = b2 >> 4;   if (p) vdest[5] = palette[poffset + p];
+        p = b3 & 0x0f; if (p) vdest[6] = palette[poffset + p];
+        p = b3 >> 4;   if (p) vdest[7] = palette[poffset + p];
     }
 }
 
@@ -613,6 +613,8 @@ static void geo_lspc_fixline_line(void) {
     */
     unsigned line = lspc.scanline - LSPC_LINE_BORDER_TOP;
     unsigned trow = line >> 3; // Tile row
+    unsigned row = line & 0x07;
+    uint32_t *voffset = vbuf + (LSPC_WIDTH * lspc.scanline);
 
     unsigned offsets[34];
     unsigned bank = 0;
@@ -638,18 +640,23 @@ static void geo_lspc_fixline_line(void) {
         uint16_t entry = lspc.vram[0x7000 + trow + (x << 5)];
         unsigned poffset = ((entry >> 8) & 0xf0) + (lspc.palbank * SIZE_4K);
         unsigned tnum = (entry & 0x0fff) + offsets[(trow - 2) & 0x1f];
-        uint8_t *tdata = &fixdata[tnum << 5];
-        uint32_t *voffset =
-            vbuf + (LSPC_WIDTH * lspc.scanline) + (x << 3);
-        unsigned row = line & 0x07;
-        uint32_t pentry = 0;
-        for (unsigned p = 0, f = 0x10; p < 4; ++p, f = (f + 0x08) & 0x18) {
-            pentry = tdata[f + row] & 0x0f;
-            if (pentry) voffset[p << 1] = palette[poffset + pentry];
+        uint8_t *tdata = &fixdata[tnum << 5] + row;
+        uint32_t *vdest = voffset + (x << 3);
 
-            pentry = (tdata[f + row] >> 4) & 0x0f;
-            if (pentry) voffset[(p << 1) + 1] = palette[poffset + pentry];
-        }
+        uint8_t b0 = tdata[0x10];
+        uint8_t b1 = tdata[0x18];
+        uint8_t b2 = tdata[0x00];
+        uint8_t b3 = tdata[0x08];
+
+        unsigned p;
+        p = b0 & 0x0f; if (p) vdest[0] = palette[poffset + p];
+        p = b0 >> 4;   if (p) vdest[1] = palette[poffset + p];
+        p = b1 & 0x0f; if (p) vdest[2] = palette[poffset + p];
+        p = b1 >> 4;   if (p) vdest[3] = palette[poffset + p];
+        p = b2 & 0x0f; if (p) vdest[4] = palette[poffset + p];
+        p = b2 >> 4;   if (p) vdest[5] = palette[poffset + p];
+        p = b3 & 0x0f; if (p) vdest[6] = palette[poffset + p];
+        p = b3 >> 4;   if (p) vdest[7] = palette[poffset + p];
     }
 }
 
@@ -657,6 +664,8 @@ static void geo_lspc_fixline_line(void) {
 static void geo_lspc_fixline_tile(void) {
     unsigned line = lspc.scanline - LSPC_LINE_BORDER_TOP;
     unsigned trow = line >> 3; // Tile row
+    unsigned row = line & 0x07;
+    uint32_t *voffset = vbuf + (LSPC_WIDTH * lspc.scanline);
 
     for (unsigned x = 0; x < LSPC_FIXTILES_H; ++x) {
         uint16_t entry = lspc.vram[0x7000 + (line >> 3) + (x << 5)];
@@ -671,24 +680,23 @@ static void geo_lspc_fixline_tile(void) {
             ~(lspc.vram[0x7500 + ((trow - 1) & 0x1f) + 32 * (x / 6)] >>
             (5 - (x % 6)) * 2) & 0x03;
         unsigned tnum = (entry & 0x0fff) + (offset * SIZE_4K);
-        uint8_t *tdata = &fixdata[tnum << 5];
+        uint8_t *tdata = &fixdata[tnum << 5] + row;
+        uint32_t *vdest = voffset + (x << 3);
 
-        // Offset into video buffer to draw the tile row into
-        uint32_t *voffset =
-            vbuf + (LSPC_WIDTH * lspc.scanline) + (x << 3);
+        uint8_t b0 = tdata[0x10];
+        uint8_t b1 = tdata[0x18];
+        uint8_t b2 = tdata[0x00];
+        uint8_t b3 = tdata[0x08];
 
-        // Row in the 8 pixel high tile
-        unsigned row = line & 0x07;
-
-        // If the palette entry is non-zero, output a colour
-        uint32_t pentry = 0;
-        for (unsigned p = 0, f = 0x10; p < 4; ++p, f = (f + 0x08) & 0x18) {
-            pentry = tdata[f + row] & 0x0f;
-            if (pentry) voffset[p << 1] = palette[poffset + pentry];
-
-            pentry = (tdata[f + row] >> 4) & 0x0f;
-            if (pentry) voffset[(p << 1) + 1] = palette[poffset + pentry];
-        }
+        unsigned p;
+        p = b0 & 0x0f; if (p) vdest[0] = palette[poffset + p];
+        p = b0 >> 4;   if (p) vdest[1] = palette[poffset + p];
+        p = b1 & 0x0f; if (p) vdest[2] = palette[poffset + p];
+        p = b1 >> 4;   if (p) vdest[3] = palette[poffset + p];
+        p = b2 & 0x0f; if (p) vdest[4] = palette[poffset + p];
+        p = b2 >> 4;   if (p) vdest[5] = palette[poffset + p];
+        p = b3 & 0x0f; if (p) vdest[6] = palette[poffset + p];
+        p = b3 >> 4;   if (p) vdest[7] = palette[poffset + p];
     }
 }
 
