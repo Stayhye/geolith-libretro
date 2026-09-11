@@ -1204,8 +1204,9 @@ void retro_run(void) {
 			LSPC_WIDTH << 1);
 
 		free(dst_buf);
-	}
 
+	}
+	
     audio_batch_cb(abuf, numsamps);
 }
 
