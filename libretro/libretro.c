@@ -1205,7 +1205,7 @@ void retro_run(void) {
 
 		free(dst_buf);
 
-	}
+	
 	
     audio_batch_cb(abuf, numsamps);
 }
