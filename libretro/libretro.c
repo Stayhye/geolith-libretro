@@ -1201,7 +1201,7 @@ void retro_run(void) {
 	video_cb(dst_buf + (LSPC_WIDTH * (video_crop_t + 16)) + video_crop_l,
 			video_width_visible,
 			video_height_visible,
-			LSPC_WIDTH << 1);
+			LSPC_WIDTH << 2);
 
 		free(dst_buf);
 
