@@ -1195,7 +1195,7 @@ void retro_run(void) {
 	   uint32_t g = (p >> 8) & 0xFF;
 	   uint32_t b = p & 0xFF;
 
-	   dst_buf[i] = (b << 24) | (g << 16) | (r << 8) | a;
+	   dst_buf[i] = (a << 24) | (b << 16) | (g << 8) | r;
 	}
 
 	video_cb(dst_buf + (LSPC_WIDTH * (video_crop_t + 16)) + video_crop_l,
