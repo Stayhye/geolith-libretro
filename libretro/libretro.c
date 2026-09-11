@@ -1190,9 +1190,9 @@ void retro_run(void) {
 	for (int i = 0; i < num_pixels; i++) {
 	   uint16_t p = src_buf[i];
 	   
-	   uint32_t r = (p >> 11) & 0x1F;
+	   uint32_t r = p & 0x1F;
 	   uint32_t g = (p >> 6) & 0x1F;
-	   uint32_t b = p & 0x1F;
+	   uint32_t b = (p >> 11) & 0x1F;
 
 	   dst_buf[i] = 0x8000 | (b << 10) | (g << 5) | r;
 	}
