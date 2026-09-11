@@ -1183,26 +1183,28 @@ void retro_run(void) {
     }
 
     // Convert ARGB1555 / XRGB1555 emulator output to ABGR1555 (Swap Red and Blue)
-    uint16_t *src_buf = (uint16_t *)vbuf + (LSPC_WIDTH * (video_crop_t + 16)) + video_crop_l;
-	int num_pixels = video_width_visible * video_height_visible;
-	uint16_t *dst_buf = (uint16_t *)malloc(num_pixels * sizeof(uint16_t)); 
+    uint32_t *src_buf = (uint32_t *)vbuf;
+	int num_pixels = LSPC_WIDTH * LSPC_SCANLINES;
+	uint32_t *dst_buf = (uint32_t *)malloc(num_pixels * sizeof(uint32_t)); 
 
 	for (int i = 0; i < num_pixels; i++) {
-	   uint16_t p = src_buf[i];
+	   uint32_t p = src_buf[i];
 	   
-	   uint32_t r = (p >> 11) & 0x1F;
-	   uint32_t g = (p >> 6) & 0x1F;
-	   uint32_t b = p & 0x1F;
+	   uint32_t a = (p >> 24) & 0xFF;
+	   uint32_t r = (p >> 16) & 0xFF;
+	   uint32_t g = (p >> 8) & 0xFF;
+	   uint32_t b = p & 0xFF;
 
-	   dst_buf[i] = 0x8000 | (b << 10) | (g << 5) | r;
+	   dst_buf[i] = (b << 24) | (g << 16) | (r << 8) | a;
 	}
 
-    video_cb(vbuf + (LSPC_WIDTH * (video_crop_t + 16)) + video_crop_l,
-        video_width_visible,
-        video_height_visible,
-        LSPC_WIDTH << 1);
-	
-	free(vbuf);
+	video_cb(dst_buf + (LSPC_WIDTH * (video_crop_t + 16)) + video_crop_l,
+			video_width_visible,
+			video_height_visible,
+			LSPC_WIDTH << 1);
+
+		free(dst_buf);
+	}
 
     audio_batch_cb(abuf, numsamps);
 }
