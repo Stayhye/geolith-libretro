@@ -1204,6 +1204,11 @@ void retro_run(void) {
 
 	free(dst_buf);
 
+    video_cb(vbuf + (LSPC_WIDTH * (video_crop_t + 16)) + video_crop_l,
+        video_width_visible,
+        video_height_visible,
+        LSPC_WIDTH << 2);
+
     audio_batch_cb(abuf, numsamps);
 }
 
