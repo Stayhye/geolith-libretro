@@ -1197,13 +1197,12 @@ void retro_run(void) {
 	   dst_buf[i] = 0x8000 | (b << 10) | (g << 5) | r;
 	}
 
-	video_cb(dst_buf+ (LSPC_WIDTH * (video_crop_t + 16)) + video_crop_l,
-			video_width_visible,
-			video_height_visible,
-			LSPC_WIDTH << 1);
-
-	free(dst_buf);
-
+    video_cb(vbuf + (LSPC_WIDTH * (video_crop_t + 16)) + video_crop_l,
+        video_width_visible,
+        video_height_visible,
+        LSPC_WIDTH << 1);
+	
+	free(vbuf);
 
     audio_batch_cb(abuf, numsamps);
 }
