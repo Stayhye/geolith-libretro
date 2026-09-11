@@ -1190,21 +1190,20 @@ void retro_run(void) {
 	for (int i = 0; i < num_pixels; i++) {
 	   uint16_t p = src_buf[i];
 	   
-	   uint32_t r = p & 0x1F;
+	   uint32_t r = (p >> 11) & 0x1F;
 	   uint32_t g = (p >> 6) & 0x1F;
-	   uint32_t b = (p >> 11) & 0x1F;
+	   uint32_t b = p & 0x1F;
 
-	   dst_buf[i] = (p & 0x8000) | ((p & 0x001F) << 10) | (p & 0x03E0) | ((p & 0x7C00) >> 10);
+	   dst_buf[i] = 0x8000 | (b << 10) | (g << 5) | r;
 	}
 
-	video_cb(vbuf + (LSPC_WIDTH * (video_crop_t + 16)) + video_crop_l,
-        video_width_visible,
-        video_height_visible,
-        LSPC_WIDTH << 2);
+	video_cb(dst_buf+ (LSPC_WIDTH * (video_crop_t + 16)) + video_crop_l,
+			video_width_visible,
+			video_height_visible,
+			LSPC_WIDTH << 1);
 
 	free(dst_buf);
 
-    
 
     audio_batch_cb(abuf, numsamps);
 }
