@@ -327,6 +327,19 @@ Z80_EXPORT void z80_set_sp(z80* const z, uint16_t sp) {
   z->sp = sp;
 }
 
+Z80_EXPORT void z80_pulse_nmi(z80* const z) {
+  z->nmi_pending |= Z80_PULSE;
+}
+
+Z80_EXPORT void z80_assert_irq(z80* const z, uint8_t data) {
+  z->irq_pending |= Z80_PULSE;
+  z->irq_data = data;
+}
+
+Z80_EXPORT void z80_clr_irq(z80* const z) {
+  z->irq_pending &= ~Z80_PULSE;
+}
+
 Z80_EXPORT unsigned z80_step(z80* const z) {
   unsigned cyc = 0;
   if (unlikely(z->halted)) {
