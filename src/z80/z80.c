@@ -135,8 +135,6 @@ Z80_INLINE bool parity(uint8_t v) {
   return !((0x6996 >> v) & 1);
 }
 
-static unsigned exec_opcode(z80* const z, uint8_t opcode);
-
 Z80_INLINE void jump(z80* const z, uint16_t addr) {
   z->pc = addr;
   z->mem_ptr = addr;
@@ -273,6 +271,16 @@ Z80_INLINE void cp(z80* const z, const uint32_t val) {
   carry >>= 6;
   z->f |= ((carry + 2) & 4);
   z->f |= ((carry >> 2) & 1);
+}
+
+static unsigned exec_opcode(z80* const z, uint8_t opcode) {
+  inc_r(z);
+  switch (opcode) {
+    case 0x00: // NOP
+      return 4;
+    default:
+      return 4;
+  }
 }
 
 Z80_EXPORT void z80_init(z80* const z) {
