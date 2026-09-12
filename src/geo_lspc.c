@@ -801,7 +801,6 @@ static inline void geo_lspc_sprcalc(void) {
     unsigned active_lb = lbactive;
     uint8_t *target_linebuf = linebuf[active_lb];
     const uint8_t *l0_table = romdata->l0;
-    unsigned csz_mask = romdata->csz - 1; // Replaces slow modulo with bitwise AND
 
     for (unsigned i = 1; i < 382; ++i) {
         uint16_t v8200 = vram[0x8200 + i];
@@ -936,9 +935,9 @@ static inline void geo_lspc_sprcalc(void) {
 
         /* Tiles are 128 bytes: 16 * 16 pixels * 4 bits per pixel = 1024 bits
            Multiply the tile number by 128 to get the offset of the tile in
-           C ROM. Optimized with power-of-two mask instead of modulo.
+           C ROM. Restored safe modulo calculation for arbitrary C ROM sizes.
         */
-        unsigned toffset = (tnum << 7) & csz_mask;
+        unsigned toffset = (tnum << 7) % romdata->csz;
 
         // Y value in the sprite tile to be drawn, flipped if necessary
         unsigned y = vflip ? (0x0f - (srow & 0x0f)) : (srow & 0x0f);
