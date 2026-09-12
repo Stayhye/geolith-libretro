@@ -769,20 +769,19 @@ static inline unsigned geo_lspc_tpix(unsigned tbase, unsigned x, unsigned y) {
     */
     unsigned base = tbase + (y << 2);
     unsigned v0, v1, v2, v3;
-    const uint8_t *c_rom = romdata->c;
     if (ngsys.cdmode) { // CD SPR DRAM: Non-interleaved byte order [1, 0, 3, 2]
-        v0 = c_rom[base + 1] >> x;
-        v1 = c_rom[base + 0] >> x;
-        v2 = c_rom[base + 3] >> x;
-        v3 = c_rom[base + 2] >> x;
+        v0 = (romdata->c[base + 1]) >> (x);
+        v1 = (romdata->c[base + 0]) >> (x);
+        v2 = (romdata->c[base + 3]) >> (x);
+        v3 = (romdata->c[base + 2]) >> (x);
     }
     else { // Cart C ROM: Interleaved odd/even byte order [0, 2, 1, 3]
-        v0 = c_rom[base + 0] >> x;
-        v1 = c_rom[base + 2] >> x;
-        v2 = c_rom[base + 1] >> x;
-        v3 = c_rom[base + 3] >> x;
+        v0 = (romdata->c[base + 0]) >> (x);
+        v1 = (romdata->c[base + 2]) >> (x);
+        v2 = (romdata->c[base + 1]) >> (x);
+        v3 = (romdata->c[base + 3]) >> (x);
     }
-    return (v0 & 0x01) | ((v1 & 0x01) << 1) | ((v2 & 0x01) << 2) | ((v3 & 0x01) << 3);
+    return (v0 & 0x01) | (v1 & 0x01) << 1 | (v2 & 0x01) << 2 | (v3 & 0x01) << 3;
 }
 
 // Calculate a line of sprite data 2 lines in advance
@@ -796,15 +795,8 @@ static inline void geo_lspc_sprcalc(void) {
     unsigned hshrink = 0x0f; // Start at full width (no shrinking)
     unsigned vshrink = 0xff; // Start at full height (no shrinking)
 
-    const uint16_t *vram = lspc.vram;
-    unsigned palbank_size = lspc.palbank * SIZE_4K;
-    unsigned active_lb = lbactive;
-    uint8_t *target_linebuf = linebuf[active_lb];
-    const uint8_t *l0_table = romdata->l0;
-
     for (unsigned i = 1; i < 382; ++i) {
-        uint16_t v8200 = vram[0x8200 + i];
-        if (v8200 & 0x40) { // Sticky/Chain bit set
+        if (lspc.vram[0x8200 + i] & 0x40) { // Sticky/Chain bit set
             /* Attach this sprite to the edge of the previous one, and do not
                set a new Y position or size/height. Account for any horizontal
                shrinking from the last sprite by using its hshrink value
@@ -812,14 +804,14 @@ static inline void geo_lspc_sprcalc(void) {
             xpos += (hshrink + 1);
         }
         else {
-            xpos = (vram[0x8400 + i] >> 7) & 0x1ff;
-            ypos = (v8200 >> 7) & 0x1ff; // 512-Y
-            sprsize = v8200 & 0x3f; // Height in tiles
-            vshrink = vram[0x8000 + i] & 0xff;
+            xpos = (lspc.vram[0x8400 + i] >> 7) & 0x1ff;
+            ypos = (lspc.vram[0x8200 + i] >> 7) & 0x1ff; // 512-Y
+            sprsize = lspc.vram[0x8200 + i] & 0x3f; // Height in tiles
+            vshrink = lspc.vram[0x8000 + i] & 0xff;
         }
 
         // Set horizontal shrinking value
-        hshrink = (vram[0x8000 + i] >> 8) & 0x0f;
+        hshrink = (lspc.vram[0x8000 + i] >> 8) & 0x0f;
 
         // Sprite Row - vertical offset for the line of the sprite to be drawn
         unsigned srow = (line - (0x200 - ypos)) & 0x1ff;
@@ -867,7 +859,7 @@ static inline void geo_lspc_sprcalc(void) {
             }
         }
 
-        srow = l0_table[(vshrink << 8) + zrow];
+        srow = romdata->l0[(vshrink << 8) + zrow];
 
         if (invert)
             srow ^= 0x1ff;
@@ -888,20 +880,19 @@ static inline void geo_lspc_sprcalc(void) {
         // Offset to the even word of this tile's map entry
         unsigned tmapoffset = (i << 6) + ((srow >> 3) & 0x3e);
 
-        uint16_t tmap_lo = vram[tmapoffset];
-        uint16_t tmap_hi = vram[tmapoffset + 1];
-
-        unsigned tnum = (tmap_lo | ((tmap_hi & 0x00f0) << 12)) & crommask;
+        unsigned tnum = (lspc.vram[tmapoffset] |
+            ((lspc.vram[tmapoffset + 1] & 0x00f0) << 12)) & crommask;
 
         // Horizontal and Vertical flip
-        unsigned hflip = tmap_hi & 0x01;
-        unsigned vflip = tmap_hi & 0x02;
+        unsigned hflip = lspc.vram[tmapoffset + 1] & 0x01;
+        unsigned vflip = lspc.vram[tmapoffset + 1] & 0x02;
 
         // Auto-animation bits
-        unsigned aabits = (tmap_hi & 0x0c) >> 2;
+        unsigned aabits = (lspc.vram[tmapoffset + 1] & 0x0c) >> 2;
 
         // Palette offset -- 0th entry of nth palette
-        unsigned poffset = ((tmap_hi >> 4) & 0x0ff0) + palbank_size;
+        unsigned poffset = ((lspc.vram[tmapoffset + 1] >> 4) & 0x0ff0) +
+            (lspc.palbank * SIZE_4K);
 
         /* Auto-animation
            ===================================================
@@ -920,11 +911,13 @@ static inline void geo_lspc_sprcalc(void) {
         if (!lspc.aa_disable) {
             switch (aabits) {
                 case 1: {
-                    tnum = (tnum & ~0x03) | (lspc.aa_counter & 0x03);
+                    tnum &= ~0x03;
+                    tnum |= lspc.aa_counter & 0x03;
                     break;
                 }
                 case 2: case 3: {
-                    tnum = (tnum & ~0x07) | (lspc.aa_counter & 0x07);
+                    tnum &= ~0x07;
+                    tnum |= lspc.aa_counter & 0x07;
                     break;
                 }
                 default: {
@@ -935,7 +928,7 @@ static inline void geo_lspc_sprcalc(void) {
 
         /* Tiles are 128 bytes: 16 * 16 pixels * 4 bits per pixel = 1024 bits
            Multiply the tile number by 128 to get the offset of the tile in
-           C ROM. Restored safe modulo calculation for arbitrary C ROM sizes.
+           C ROM.
         */
         unsigned toffset = (tnum << 7) % romdata->csz;
 
@@ -959,15 +952,14 @@ static inline void geo_lspc_sprcalc(void) {
         // X coordinates in the line buffer
         unsigned xcoord = 0;
 
-        const uint8_t *lut_hshrink_row = lut_hshrink[hshrink];
         for (unsigned p = 0; p < 16; ++p) {
-            if (lut_hshrink_row[p]) {
+            if (lut_hshrink[hshrink][p]) {
                 pentry = geo_lspc_tpix(toffset + (((0x08 & p) ^ ftile) << 3),
                     (p & 0x07) ^ fpix, y);
 
                 xcoord = (xpos + drawpos) & 0x1ff;
                 if (pentry && (xcoord < LSPC_WIDTH))
-                    target_linebuf[xcoord] = poffset + pentry;
+                    linebuf[lbactive][xcoord] = poffset + pentry;
 
                 ++drawpos; // Increment for coloured and transparent pixels
             }
