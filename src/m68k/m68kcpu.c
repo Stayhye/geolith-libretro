@@ -48,6 +48,15 @@ extern void m68ki_build_opcode_table(void);
 #include "m68kops.h"
 #include "m68kcpu.h"
 
+/* PS2/R5900 fast-path hints.  These do not change emulation semantics. */
+#if defined(__GNUC__) || defined(__clang__)
+# define M68K_PS2_HOT __attribute__((hot))
+# define M68K_PS2_INLINE __attribute__((always_inline)) inline
+#else
+# define M68K_PS2_HOT
+# define M68K_PS2_INLINE inline
+#endif
+
 #include "m68kfpu.c"
 #include "m68kmmu.h" // uses some functions from m68kfpu.c which are static !
 
@@ -935,7 +944,7 @@ void m68k_set_cpu_type(unsigned cpu_type)
 	}
 }
 
-int m68k_execute(int num_cycles)
+M68K_PS2_HOT int m68k_execute(int num_cycles)
 {
     /* Eat up any reset cycles */
     if (RESET_CYCLES) {
@@ -997,31 +1006,31 @@ int m68k_execute(int num_cycles)
 }
 
 
-inline int m68k_cycles_run(void)
+M68K_PS2_INLINE int m68k_cycles_run(void)
 {
     return m68ki_initial_cycles - GET_CYCLES();
 }
 
-inline int m68k_cycles_remaining(void)
+M68K_PS2_INLINE int m68k_cycles_remaining(void)
 {
     return GET_CYCLES();
 }
 
 /* Change the timeslice */
-inline void m68k_modify_timeslice(int cycles)
+M68K_PS2_INLINE void m68k_modify_timeslice(int cycles)
 {
     m68ki_initial_cycles += cycles;
     ADD_CYCLES(cycles);
 }
 
-inline void m68k_end_timeslice(void)
+M68K_PS2_INLINE void m68k_end_timeslice(void)
 {
     m68ki_initial_cycles = GET_CYCLES();
     SET_CYCLES(0);
 }
 
 /* Optimized for MIPS R5900 branch efficiency and register packing */
-void m68k_set_irq(unsigned int_level)
+M68K_PS2_HOT void m68k_set_irq(unsigned int_level)
 {
     unsigned old_level = CPU_INT_LEVEL;
     unsigned new_level = int_level << 8;
@@ -1032,7 +1041,7 @@ void m68k_set_irq(unsigned int_level)
         m68ki_cpu.nmi_pending = TRUE;
 }
 
-void m68k_set_virq(unsigned level, unsigned active)
+M68K_PS2_HOT void m68k_set_virq(unsigned level, unsigned active)
 {
     unsigned state = m68ki_cpu.virq_state;
 
@@ -1044,20 +1053,25 @@ void m68k_set_virq(unsigned level, unsigned active)
     m68ki_cpu.virq_state = state;
 
     /* Optimized priority scan using a hardware-friendly loop layout */
-    unsigned blevel = 7;
-    while(blevel > 0 && !(state & (1 << blevel)))
-    {
-        blevel--;
-    }
+    /* Neo Geo normally uses low interrupt levels; fixed tests avoid a loop. */
+    unsigned blevel;
+    if (state & 0x80)      blevel = 7;
+    else if (state & 0x40) blevel = 6;
+    else if (state & 0x20) blevel = 5;
+    else if (state & 0x10) blevel = 4;
+    else if (state & 0x08) blevel = 3;
+    else if (state & 0x04) blevel = 2;
+    else if (state & 0x02) blevel = 1;
+    else                   blevel = 0;
     m68k_set_irq(blevel);
 }
 
-inline unsigned m68k_get_virq(unsigned level)
+M68K_PS2_INLINE unsigned m68k_get_virq(unsigned level)
 {
     return (m68ki_cpu.virq_state >> level) & 1;
 }
 
-inline void m68k_init(void)
+M68K_PS2_INLINE void m68k_init(void)
 {
     static unsigned emulation_initialized = 0;
 
@@ -1081,7 +1095,7 @@ inline void m68k_init(void)
 }
 
 /* Trigger a Bus Error exception */
-inline void m68k_pulse_bus_error(void)
+M68K_PS2_INLINE void m68k_pulse_bus_error(void)
 {
     m68ki_exception_bus_error();
 }
@@ -1128,25 +1142,25 @@ void m68k_pulse_reset(void)
 }
 
 /* Pulse the HALT line on the CPU */
-inline void m68k_pulse_halt(void)
+M68K_PS2_INLINE void m68k_pulse_halt(void)
 {
     CPU_STOPPED |= STOP_LEVEL_HALT;
 }
 
 /* Get and set the current CPU context optimized with block copy instructions */
-inline unsigned m68k_context_size(void)
+M68K_PS2_INLINE unsigned m68k_context_size(void)
 {
     return sizeof(m68ki_cpu_core);
 }
 
-inline unsigned m68k_get_context(void* dst)
+M68K_PS2_INLINE unsigned m68k_get_context(void* dst)
 {
     if(__builtin_expect(dst != NULL, 1)) 
         *(m68ki_cpu_core*)dst = m68ki_cpu;
     return sizeof(m68ki_cpu_core);
 }
 
-inline void m68k_set_context(void* src)
+M68K_PS2_INLINE void m68k_set_context(void* src)
 {
     if(__builtin_expect(src != NULL, 1)) 
         m68ki_cpu = *(m68ki_cpu_core*)src;
