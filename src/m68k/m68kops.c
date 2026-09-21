@@ -36610,115 +36610,167 @@ static const opcode_handler_struct m68k_opcode_handler_table[] =
 };
 
 
-/* Build the opcode handler jump table */
+/* Build the opcode handler jump table - Optimized for PS2 / R5900 */
 void m68ki_build_opcode_table(void)
 {
-	const opcode_handler_struct *ostruct;
-	int cycle_cost;
-	int instr;
-	int i;
-	int j;
-	int k;
+    const opcode_handler_struct *ostruct;
+    int cycle_cost;
+    int instr;
+    int i, j, k;
 
-	for(i = 0; i < 0x10000; i++)
-	{
-		/* default to illegal */
-		m68ki_instruction_jump_table[i] = m68k_op_illegal;
-		for(k=0;k<NUM_CPU_TYPES;k++)
-			m68ki_cycles[k][i] = 0;
-	}
+    // Local register caching for global arrays to optimize R5900 pointer generation
+    op_handler_t *jump_table = m68ki_instruction_jump_table;
+    
+    // 1. Initialize the entire jump table and cycle tables to defaults efficiently
+    for(i = 0; i < 0x10000; i++)
+    {
+        jump_table[i] = m68k_op_illegal;
+        for(k = 0; k < NUM_CPU_TYPES; k++)
+        {
+            m68ki_cycles[k][i] = 0;
+        }
+    }
 
-	ostruct = m68k_opcode_handler_table;
-	while(ostruct->mask != 0xff00)
-	{
-		for(i = 0;i < 0x10000;i++)
-		{
-			if((i & ostruct->mask) == ostruct->match)
-			{
-				m68ki_instruction_jump_table[i] = ostruct->opcode_handler;
-				for(k=0;k<NUM_CPU_TYPES;k++)
-					m68ki_cycles[k][i] = ostruct->cycles[k];
-			}
-		}
-		ostruct++;
-	}
-	while(ostruct->mask == 0xff00)
-	{
-		for(i = 0;i <= 0xff;i++)
-		{
-			m68ki_instruction_jump_table[ostruct->match | i] = ostruct->opcode_handler;
-			for(k=0;k<NUM_CPU_TYPES;k++)
-				m68ki_cycles[k][ostruct->match | i] = ostruct->cycles[k];
-		}
-		ostruct++;
-	}
-	while(ostruct->mask == 0xf1f8)
-	{
-		for(i = 0;i < 8;i++)
-		{
-			for(j = 0;j < 8;j++)
-			{
-				instr = ostruct->match | (i << 9) | j;
-				m68ki_instruction_jump_table[instr] = ostruct->opcode_handler;
-				for(k=0;k<NUM_CPU_TYPES;k++)
-					m68ki_cycles[k][instr] = ostruct->cycles[k];
-				// For all shift operations with known shift distance (encoded in instruction word)
-				if((instr & 0xf000) == 0xe000 && (!(instr & 0x20)))
-				{
-					// On the 68000 and 68010 shift distance affect execution time.
-					// Add the cycle cost of shifting; 2 times the shift distance
-					cycle_cost = ((((i-1)&7)+1)<<1);
-					m68ki_cycles[0][instr] += cycle_cost;
-					m68ki_cycles[1][instr] += cycle_cost;
-					// On the 68020 shift distance does not affect execution time
-					m68ki_cycles[2][instr] += 0;
-				}
-			}
-		}
-		ostruct++;
-	}
-	while(ostruct->mask == 0xfff0)
-	{
-		for(i = 0;i <= 0x0f;i++)
-		{
-			m68ki_instruction_jump_table[ostruct->match | i] = ostruct->opcode_handler;
-			for(k=0;k<NUM_CPU_TYPES;k++)
-				m68ki_cycles[k][ostruct->match | i] = ostruct->cycles[k];
-		}
-		ostruct++;
-	}
-	while(ostruct->mask == 0xf1ff)
-	{
-		for(i = 0;i <= 0x07;i++)
-		{
-			m68ki_instruction_jump_table[ostruct->match | (i << 9)] = ostruct->opcode_handler;
-			for(k=0;k<NUM_CPU_TYPES;k++)
-				m68ki_cycles[k][ostruct->match | (i << 9)] = ostruct->cycles[k];
-		}
-		ostruct++;
-	}
-	while(ostruct->mask == 0xfff8)
-	{
-		for(i = 0;i <= 0x07;i++)
-		{
-			m68ki_instruction_jump_table[ostruct->match | i] = ostruct->opcode_handler;
-			for(k=0;k<NUM_CPU_TYPES;k++)
-				m68ki_cycles[k][ostruct->match | i] = ostruct->cycles[k];
-		}
-		ostruct++;
-	}
-	while(ostruct->mask == 0xffff)
-	{
-		m68ki_instruction_jump_table[ostruct->match] = ostruct->opcode_handler;
-		for(k=0;k<NUM_CPU_TYPES;k++)
-			m68ki_cycles[k][ostruct->match] = ostruct->cycles[k];
-		ostruct++;
-	}
+    ostruct = m68k_opcode_handler_table;
+
+    // 2. Process general masks
+    while(ostruct->mask != 0xff00)
+    {
+        unsigned int mask = ostruct->mask;
+        unsigned int match = ostruct->match;
+        op_handler_t handler = ostruct->opcode_handler;
+
+        for(i = 0; i < 0x10000; i++)
+        {
+            if((i & mask) == match)
+            {
+                jump_table[i] = handler;
+                for(k = 0; k < NUM_CPU_TYPES; k++)
+                {
+                    m68ki_cycles[k][i] = ostruct->cycles[k];
+                }
+            }
+        }
+        ostruct++;
+    }
+
+    // 3. Process 0xff00 mask
+    while(ostruct->mask == 0xff00)
+    {
+        unsigned int match = ostruct->match;
+        op_handler_t handler = ostruct->opcode_handler;
+
+        for(i = 0; i <= 0xff; i++)
+        {
+            int idx = match | i;
+            jump_table[idx] = handler;
+            for(k = 0; k < NUM_CPU_TYPES; k++)
+            {
+                m68ki_cycles[k][idx] = ostruct->cycles[k];
+            }
+        }
+        ostruct++;
+    }
+
+    // 4. Process 0xf1f8 mask (Shift operations with inline cycle adjustments)
+    while(ostruct->mask == 0xf1f8)
+    {
+        unsigned int match = ostruct->match;
+        op_handler_t handler = ostruct->opcode_handler;
+
+        for(i = 0; i < 8; i++)
+        {
+            int base_i = match | (i << 9);
+            for(j = 0; j < 8; j++)
+            {
+                instr = base_i | j;
+                jump_table[instr] = handler;
+                
+                for(k = 0; k < NUM_CPU_TYPES; k++)
+                {
+                    m68ki_cycles[k][instr] = ostruct->cycles[k];
+                }
+
+                // Shift operations cycle cost adjustment
+                if((instr & 0xf000) == 0xe000 && (!(instr & 0x20)))
+                {
+                    cycle_cost = ((((i - 1) & 7) + 1) << 1);
+                    m68ki_cycles[0][instr] += cycle_cost;
+                    m68ki_cycles[1][instr] += cycle_cost;
+                    // 68020 shift distance does not affect execution time
+                }
+            }
+        }
+        ostruct++;
+    }
+
+    // 5. Process 0xfff0 mask
+    while(ostruct->mask == 0xfff0)
+    {
+        unsigned int match = ostruct->match;
+        op_handler_t handler = ostruct->opcode_handler;
+
+        for(i = 0; i <= 0x0f; i++)
+        {
+            int idx = match | i;
+            jump_table[idx] = handler;
+            for(k = 0; k < NUM_CPU_TYPES; k++)
+            {
+                m68ki_cycles[k][idx] = ostruct->cycles[k];
+            }
+        }
+        ostruct++;
+    }
+
+    // 6. Process 0xf1ff mask
+    while(ostruct->mask == 0xf1ff)
+    {
+        unsigned int match = ostruct->match;
+        op_handler_t handler = ostruct->opcode_handler;
+
+        for(i = 0; i <= 0x07; i++)
+        {
+            int idx = match | (i << 9);
+            jump_table[idx] = handler;
+            for(k = 0; k < NUM_CPU_TYPES; k++)
+            {
+                m68ki_cycles[k][idx] = ostruct->cycles[k];
+            }
+        }
+        ostruct++;
+    }
+
+    // 7. Process 0xfff8 mask
+    while(ostruct->mask == 0xfff8)
+    {
+        unsigned int match = ostruct->match;
+        op_handler_t handler = ostruct->opcode_handler;
+
+        for(i = 0; i <= 0x07; i++)
+        {
+            int idx = match | i;
+            jump_table[idx] = handler;
+            for(k = 0; k < NUM_CPU_TYPES; k++)
+            {
+                m68ki_cycles[k][idx] = ostruct->cycles[k];
+            }
+        }
+        ostruct++;
+    }
+
+    // 8. Process 0xffff exact match mask
+    while(ostruct->mask == 0xffff)
+    {
+        int match = ostruct->match;
+        jump_table[match] = ostruct->opcode_handler;
+        for(k = 0; k < NUM_CPU_TYPES; k++)
+        {
+            m68ki_cycles[k][match] = ostruct->cycles[k];
+        }
+        ostruct++;
+    }
 }
-
 
 /* ======================================================================== */
 /* ============================== END OF FILE ============================= */
 /* ======================================================================== */
-
-
