@@ -274,8 +274,9 @@ else ifeq ($(platform), ps2)
     CC = mips64r5900el-ps2-elf-gcc
     CXX = mips64r5900el-ps2-elf-g++
     AR = mips64r5900el-ps2-elf-ar
-    FLAGS += -O3 -march=r5900 -mtune=r5900 -fomit-frame-pointer -fno-strict-aliasing -flto -DPS2 -DUSE_RGB565 -DABGR1555 -Wno-incompatible-pointer-types
-    NEED_BPP := 16
+    FLAGS += -O3 -march=r5900 -mtune=r5900 -G0 -flto -DPS2 -DUSE_RGB565 -DABGR1555 -Wno-incompatible-pointer-types
+    CFLAGS += -O3 -fomit-frame-pointer -DZ80_PS2_FAST_MEM
+	NEED_BPP := 16
     STATIC_LINKING = 1
 
 # Vita
